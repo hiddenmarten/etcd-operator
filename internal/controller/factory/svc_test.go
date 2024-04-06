@@ -163,7 +163,52 @@ var _ = Describe("CreateOrUpdateService handlers", func() {
 				Expect(svc.Spec.LoadBalancerClass).To(Equal(cluster.Spec.ServiceTemplate.Spec.LoadBalancerClass))
 			})
 
-			By("checing default service spec", func() {
+			By("checking default service spec", func() {
+				expectedLabels := NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy()
+
+				Expect(svc.Spec.Selector).To(HaveLen(3))
+				Expect(svc.Spec.Selector["app.kubernetes.io/name"]).To(Equal(expectedLabels["app.kubernetes.io/name"]))
+				Expect(svc.Spec.Selector["app.kubernetes.io/instance"]).To(Equal(expectedLabels["app.kubernetes.io/instance"]))
+				Expect(svc.Spec.Selector["app.kubernetes.io/managed-by"]).To(Equal(expectedLabels["app.kubernetes.io/managed-by"]))
+			})
+
+			By("Deleting the service", func() {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+			})
+		})
+
+		It("should successfully create the client service with partial custom spec", func() {
+			trafficPolicy := corev1.ServiceInternalTrafficPolicyLocal
+			svc := &corev1.Service{}
+			cluster := etcdcluster.DeepCopy()
+			cluster.Spec.ServiceTemplate = &etcdaenixiov1alpha1.ServiceSpec{
+				EmbeddedObjectMetadata: etcdaenixiov1alpha1.EmbeddedObjectMetadata{
+					Name:        "client-name",
+					Labels:      map[string]string{"label": "value"},
+					Annotations: map[string]string{"annotation": "value"},
+				},
+				Spec: corev1.ServiceSpec{
+					InternalTrafficPolicy: &trafficPolicy,
+				},
+			}
+
+			err := CreateOrUpdateClientService(ctx, cluster, k8sClient, k8sClient.Scheme())
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      cluster.Spec.ServiceTemplate.Name,
+				Namespace: "default",
+			}, svc)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the overrided service spec", func() {
+				Expect(svc.Spec.InternalTrafficPolicy).To(Equal(&trafficPolicy))
+			})
+
+			By("checking default service spec", func() {
+
+				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
+
 				expectedLabels := NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy()
 
 				Expect(svc.Spec.Selector).To(HaveLen(3))
