@@ -31,7 +31,19 @@ import (
 )
 
 func GetClientServiceName(cluster *etcdaenixiov1alpha1.EtcdCluster) string {
+	if cluster.Spec.ServiceTemplate != nil && cluster.Spec.ServiceTemplate.Name != "" {
+		return cluster.Spec.ServiceTemplate.Name
+	}
+
 	return fmt.Sprintf("%s-client", cluster.Name)
+}
+
+func GetClusterServiceName(cluster *etcdaenixiov1alpha1.EtcdCluster) string {
+	if cluster.Spec.HeadlessServiceTemplate != nil && cluster.Spec.HeadlessServiceTemplate.Name != "" {
+		return cluster.Spec.HeadlessServiceTemplate.Name
+	}
+
+	return cluster.Name
 }
 
 func CreateOrUpdateClusterService(
@@ -42,7 +54,7 @@ func CreateOrUpdateClusterService(
 ) error {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cluster.Name,
+			Name:      GetClusterServiceName(cluster),
 			Namespace: cluster.Namespace,
 			Labels:    NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy(),
 		},
@@ -56,6 +68,10 @@ func CreateOrUpdateClusterService(
 			Selector:                 NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy(),
 			PublishNotReadyAddresses: true,
 		},
+	}
+
+	if cluster.Spec.HeadlessServiceTemplate != nil {
+		svc.ObjectMeta = mergeObjectMeta(svc.ObjectMeta, cluster.Spec.HeadlessServiceTemplate.EmbeddedObjectMetadata)
 	}
 
 	if err := ctrl.SetControllerReference(cluster, svc, rscheme); err != nil {
@@ -84,6 +100,23 @@ func CreateOrUpdateClientService(
 			Type:     corev1.ServiceTypeClusterIP,
 			Selector: NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy(),
 		},
+	}
+
+	if cluster.Spec.ServiceTemplate != nil {
+		svc.ObjectMeta = mergeObjectMeta(svc.ObjectMeta, cluster.Spec.ServiceTemplate.EmbeddedObjectMetadata)
+
+		spec := cluster.Spec.ServiceTemplate.Spec
+		if spec.Ports == nil {
+			spec.Ports = svc.Spec.Ports
+		}
+		if spec.Type == "" {
+			spec.Type = svc.Spec.Type
+		}
+		if spec.Selector == nil || len(spec.Selector) == 0 {
+			spec.Selector = svc.Spec.Selector
+		}
+
+		svc.Spec = spec
 	}
 
 	if err := ctrl.SetControllerReference(cluster, svc, rscheme); err != nil {

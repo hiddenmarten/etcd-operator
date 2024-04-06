@@ -60,7 +60,7 @@ func CreateOrUpdateStatefulSet(
 		Spec: appsv1.StatefulSetSpec{
 			// initialize static fields that cannot be changed across updates.
 			Replicas:            cluster.Spec.Replicas,
-			ServiceName:         cluster.Name,
+			ServiceName:         GetClusterServiceName(cluster),
 			PodManagementPolicy: appsv1.ParallelPodManagement,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: NewLabelsBuilder().WithName().WithInstance(cluster.Name).WithManagedBy(),
